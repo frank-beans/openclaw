@@ -92,6 +92,7 @@ function createHarness(params?: {
   consumeCompletedRunForPendingSend?: ConsumeCompletedRunMock;
   isRunObserved?: (runId: string) => boolean;
   flushPendingHistoryRefreshIfIdle?: FlushPendingHistoryRefreshMock;
+  sessionInfo?: Record<string, unknown>;
 }) {
   const sendChat =
     params?.sendChat ??
@@ -143,7 +144,7 @@ function createHarness(params?: {
     pendingSubmitDraft: null as { runId: string; text: string } | null,
     activityStatus: params?.activityStatus ?? "idle",
     isConnected: params?.isConnected ?? true,
-    sessionInfo: {},
+    sessionInfo: params?.sessionInfo ?? {},
   };
 
   const { handleCommand, openSessionSelector } = createCommandHandlers({
@@ -1214,6 +1215,64 @@ describe("tui command handlers", () => {
       "agent is busy — press Esc to abort before sending a new message",
       { coalesceConsecutive: true },
     );
+  });
+
+  it("allows gateway sends while a run is active when queueMode is followup", async () => {
+    const { handleCommand, sendChat, addPendingUser, addSystem } = createHarness({
+      activeChatRunId: "run-active",
+      activityStatus: "streaming",
+      sessionInfo: { queueMode: "followup" },
+    });
+
+    await handleCommand("follow up question");
+
+    expect(sendChat).toHaveBeenCalledTimes(1);
+    expect(addPendingUser).toHaveBeenCalledWith(expect.any(String), "follow up question");
+    expect(addSystem).not.toHaveBeenCalledWith(
+      "agent is busy — press Esc to abort before sending a new message",
+    );
+  });
+
+  it("blocks sends while optimistic user message is pending even in followup mode", async () => {
+    const { handleCommand, sendChat, addSystem } = createHarness({
+      activeChatRunId: "run-active",
+      pendingOptimisticUserMessage: true,
+      activityStatus: "sending",
+      sessionInfo: { queueMode: "followup" },
+    });
+
+    await handleCommand("another message");
+
+    expect(sendChat).not.toHaveBeenCalled();
+    expect(addSystem).toHaveBeenCalledWith(
+      "agent is busy — press Esc to abort before sending a new message",
+    );
+  });
+
+  it("preserves activeChatRunId when a queued followup send fails", async () => {
+    const sendChat = vi.fn().mockRejectedValue(new Error("network error"));
+    const { handleCommand, addSystem, state } = createHarness({
+      sendChat,
+      activeChatRunId: "run-active",
+      activityStatus: "streaming",
+      sessionInfo: { queueMode: "followup" },
+    });
+
+    await handleCommand("queued followup");
+
+    expect(addSystem).toHaveBeenCalledWith(expect.stringContaining("send failed"));
+    expect(state.activeChatRunId).toBe("run-active");
+  });
+
+  it("clears activeChatRunId when a non-queued send fails", async () => {
+    const sendChat = vi.fn().mockRejectedValue(new Error("network error"));
+    const { handleCommand, state } = createHarness({
+      sendChat,
+    });
+
+    await handleCommand("some message");
+
+    expect(state.activeChatRunId).toBeNull();
   });
 
   it("runs /auth through the local auth flow and refreshes session info", async () => {
