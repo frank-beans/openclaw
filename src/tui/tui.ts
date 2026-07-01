@@ -1442,6 +1442,7 @@ export async function runTui(opts: RunTuiOptions): Promise<TuiResult> {
       pendingChatRunId: state.pendingChatRunId,
       pendingOptimisticUserMessage: state.pendingOptimisticUserMessage,
       message,
+      queueMode: state.sessionInfo.queueMode,
     });
   const notifyBlockedChatSubmit = () => {
     addBlockedChatSubmitNotice(chatLog);
