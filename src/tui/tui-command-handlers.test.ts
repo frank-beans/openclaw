@@ -1555,4 +1555,50 @@ describe("tui command handlers", () => {
     expect(patchSession).toHaveBeenCalledWith(expect.objectContaining({ responseUsage: "full" }));
     expect(addSystem).toHaveBeenCalledWith("usage footer: full");
   });
+
+  it("allows /queue directives to reach gateway during an active run in steer mode", async () => {
+    const { handleCommand, sendChat, addPendingUser, addSystem } = createHarness({
+      activeChatRunId: "run-active",
+      activityStatus: "streaming",
+    });
+
+    await handleCommand("/queue followup");
+
+    expect(sendChat).toHaveBeenCalledTimes(1);
+    expectSendChatFields(sendChat, { message: "/queue followup" });
+    expect(addPendingUser).toHaveBeenCalledWith(expect.any(String), "/queue followup");
+    expect(addSystem).not.toHaveBeenCalledWith(
+      "agent is busy — press Esc to abort before sending a new message",
+    );
+  });
+
+  it("allows bare /queue to reach gateway during an active run", async () => {
+    const { handleCommand, sendChat, addSystem } = createHarness({
+      activeChatRunId: "run-active",
+      activityStatus: "streaming",
+    });
+
+    await handleCommand("/queue");
+
+    expect(sendChat).toHaveBeenCalledTimes(1);
+    expectSendChatFields(sendChat, { message: "/queue" });
+    expect(addSystem).not.toHaveBeenCalledWith(
+      "agent is busy — press Esc to abort before sending a new message",
+    );
+  });
+
+  it("blocks /queue while optimistic user message is pending", async () => {
+    const { handleCommand, sendChat, addSystem } = createHarness({
+      activeChatRunId: "run-active",
+      pendingOptimisticUserMessage: true,
+      activityStatus: "sending",
+    });
+
+    await handleCommand("/queue followup");
+
+    expect(sendChat).not.toHaveBeenCalled();
+    expect(addSystem).toHaveBeenCalledWith(
+      "agent is busy — press Esc to abort before sending a new message",
+    );
+  });
 });

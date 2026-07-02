@@ -81,6 +81,10 @@ function isBtwCommand(text: string): boolean {
   return /^\/(?:btw|side)(?::|\s|$)/i.test(text.trim());
 }
 
+function isQueueDirective(text: string): boolean {
+  return /^\/queue(?:\s|$)/i.test(text.trim());
+}
+
 function isSlashStopCommand(text: string): boolean {
   const trimmed = text.trim();
   return trimmed.startsWith("/") && isChatStopCommandText(trimmed);
@@ -767,6 +771,7 @@ export function createCommandHandlers(context: CommandHandlerContext) {
       return;
     }
     const isBtw = isBtwCommand(text);
+    const isQueueCmd = isQueueDirective(text);
     const busy = Boolean(
       state.activeChatRunId || state.pendingChatRunId || state.pendingOptimisticUserMessage,
     );
@@ -782,7 +787,7 @@ export function createCommandHandlers(context: CommandHandlerContext) {
     if (
       !isBtw &&
       (state.pendingOptimisticUserMessage ||
-        (!allowQueuedSend &&
+        (!(allowQueuedSend || isQueueCmd) &&
           (state.pendingChatRunId || (opts.local !== true && state.activeChatRunId))))
     ) {
       addBlockedChatSubmitNotice(chatLog);

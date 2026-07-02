@@ -91,6 +91,7 @@ function sessionInfoUiEquals(left: SessionInfo, right: SessionInfo): boolean {
     left.responseUsage === right.responseUsage &&
     left.effectiveResponseUsage === right.effectiveResponseUsage &&
     left.displayName === right.displayName &&
+    left.queueMode === right.queueMode &&
     goalEquals(left.goal, right.goal)
   );
 }

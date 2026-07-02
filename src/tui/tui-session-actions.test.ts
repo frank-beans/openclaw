@@ -1361,4 +1361,48 @@ describe("tui session actions", () => {
     });
     expect(state.currentSessionId).toBe("session-work-global");
   });
+
+  it("detects queueMode change as a UI-relevant session update", async () => {
+    const listSessions = vi.fn().mockResolvedValue({
+      ts: Date.now(),
+      path: "/tmp/sessions.json",
+      count: 1,
+      defaults: {},
+      sessions: [
+        {
+          key: "agent:main:main",
+          model: "sonnet-4.6",
+          modelProvider: "anthropic",
+          totalTokens: 42,
+          queueMode: "followup",
+          updatedAt: 200,
+        },
+      ],
+    });
+    const state = createBaseState({
+      sessionInfo: {
+        model: "sonnet-4.6",
+        modelProvider: "anthropic",
+        totalTokens: 42,
+        queueMode: "steer",
+        updatedAt: 100,
+      },
+    });
+    const updateFooter = vi.fn();
+    const updateAutocompleteProvider = vi.fn();
+    const requestRender = vi.fn();
+
+    const { refreshSessionInfo } = createTestSessionActions({
+      client: { listSessions } as unknown as TuiBackend,
+      state,
+      updateFooter,
+      updateAutocompleteProvider,
+      tui: { requestRender } as unknown as import("@earendil-works/pi-tui").TUI,
+    });
+
+    await refreshSessionInfo();
+
+    expect(state.sessionInfo.queueMode).toBe("followup");
+    expect(requestRender).toHaveBeenCalled();
+  });
 });
