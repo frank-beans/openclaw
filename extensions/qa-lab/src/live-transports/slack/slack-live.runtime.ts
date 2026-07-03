@@ -2087,6 +2087,7 @@ export const testing = {
   collectSlackButtonLabels,
   collectSlackBlockText,
   findScenario,
+  getSlackIdentity,
   isSlackChannelReadyForQa,
   parseSlackQaCredentialPayload,
   preserveSlackGatewayDebugArtifacts,
@@ -2095,8 +2096,11 @@ export const testing = {
   resolveSlackApprovalCheckpointConfig,
   resolveApprovalDecision,
   resolveSlackQaRuntimeEnv,
+  sendSlackChannelMessage,
+  listSlackMessages,
   SLACK_QA_STANDARD_SCENARIO_IDS,
   toSlackQaScenarioArtifactResults,
   waitForSlackNoReply,
+  waitForSlackChannelStable,
 };
 export { testing as __testing };

@@ -546,7 +546,7 @@ for Slack rows.
 
 ### Adding a channel to QA
 
-The architecture and scenario-helper names for new channel adapters live in [QA overview → Adding a channel](/concepts/qa-e2e-automation#adding-a-channel). The minimum bar: implement the transport runner on the shared `qa-lab` host seam, declare `qaRunners` in the plugin manifest, mount as `openclaw qa <runner>`, and author scenarios under `qa/scenarios/`.
+The architecture and scenario helpers live in [QA overview → Adding a channel](/concepts/qa-e2e-automation#adding-a-channel). Add an `adapterFactory` for shared scenarios, declare the runner in `qaRunners`, and keep scenarios under `qa/scenarios/`.
 
 ## Test suites (what runs where)
 

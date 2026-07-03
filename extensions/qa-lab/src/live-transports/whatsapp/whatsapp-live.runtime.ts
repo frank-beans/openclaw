@@ -4637,6 +4637,7 @@ export const testing = {
   runWhatsAppApprovalScenario,
   runWhatsAppStructuredInboundChecks,
   waitForScenarioObservedMessage,
+  waitForWhatsAppChannelStable,
   redactWhatsAppQaScenarioResults,
   resolveWhatsAppQaMessageTargets,
   resolveWhatsAppQaRuntimeEnv,

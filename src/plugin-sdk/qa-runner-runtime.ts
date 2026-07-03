@@ -2,15 +2,161 @@
 import type { Command } from "commander";
 import type { PluginManifestRecord } from "../plugins/manifest-registry.js";
 import { loadPluginManifestRegistry } from "../plugins/manifest-registry.js";
+import type { OpenClawConfig } from "./config-contracts.js";
 import {
   loadBundledPluginPublicSurfaceModuleSync,
   tryLoadActivatedBundledPluginPublicSurfaceModuleSync,
 } from "./facade-runtime.js";
 import { resolvePrivateQaBundledPluginsEnv } from "./private-qa-bundled-env.js";
+import type {
+  QaBusEditMessageInput,
+  QaBusInboundMessageInput,
+  QaBusMessage,
+  QaBusOutboundMessageInput,
+  QaBusReadMessageInput,
+  QaBusSearchMessagesInput,
+  QaBusStateSnapshot,
+  QaBusWaitForInput,
+} from "./qa-channel-protocol.js";
 
-/** CLI registration exported by a QA runner plugin runtime surface. */
+type QaRunnerCommandOptions = {
+  repoRoot?: string;
+  outputDir?: string;
+  providerMode?: string;
+  primaryModel?: string;
+  alternateModel?: string;
+  fastMode?: boolean;
+  allowFailures?: boolean;
+  failFast?: boolean;
+  profile?: string;
+  scenarioIds?: string[];
+  listScenarios?: boolean;
+  sutAccountId?: string;
+  credentialSource?: string;
+  credentialRole?: string;
+};
+
+type QaRunnerTransportState = {
+  reset: () => void | Promise<void>;
+  getSnapshot: () => QaBusStateSnapshot;
+  addInboundMessage: (input: QaBusInboundMessageInput) => QaBusMessage | Promise<QaBusMessage>;
+  addOutboundMessage: (input: QaBusOutboundMessageInput) => QaBusMessage | Promise<QaBusMessage>;
+  editMessage?: (input: QaBusEditMessageInput) => QaBusMessage | Promise<QaBusMessage>;
+  readMessage: (
+    input: QaBusReadMessageInput,
+  ) => QaBusMessage | null | undefined | Promise<QaBusMessage | null | undefined>;
+  searchMessages: (input: QaBusSearchMessagesInput) => QaBusMessage[] | Promise<QaBusMessage[]>;
+  waitFor: (input: QaBusWaitForInput) => Promise<unknown>;
+};
+
+type QaRunnerTransportAdapter = {
+  id: string;
+  label: string;
+  accountId: string;
+  requiredPluginIds: readonly string[];
+  supportedActions: readonly ("delete" | "edit" | "react" | "thread-create")[];
+  state: QaRunnerTransportState;
+  reset: () => Promise<void>;
+  sendInbound: (input: QaBusInboundMessageInput) => Promise<QaBusMessage>;
+  sendNativeCommand?: (
+    input: Omit<QaBusInboundMessageInput, "nativeCommand" | "text"> & { command: string },
+  ) => Promise<void>;
+  waitForNoOutbound: (input?: { quietMs?: number; sinceIndex?: number }) => Promise<void>;
+  waitForOutbound: (input: {
+    conversation?: QaBusInboundMessageInput["conversation"];
+    senderId?: string;
+    sinceIndex?: number;
+    textIncludes?: string;
+    threadId?: string;
+    timeoutMs?: number;
+  }) => Promise<QaBusMessage>;
+  waitForOutboundSequence?: (input: {
+    conversationId?: string;
+    finalSettleMs?: number;
+    finalTextIncludes: string;
+    minimumPreviewEvents?: number;
+    sinceCursor?: number;
+    threadId?: string;
+    timeoutMs?: number;
+  }) => Promise<{
+    events: Array<{ cursor: number; kind: "sent" | "edited" | "deleted"; message: QaBusMessage }>;
+    final: QaBusMessage;
+  }>;
+  waitForCondition: <T>(
+    check: () => T | Promise<T | null | undefined> | null | undefined,
+    timeoutMs?: number,
+    intervalMs?: number,
+  ) => Promise<T>;
+  createGatewayConfig: (params: {
+    baseUrl: string;
+  }) => Pick<OpenClawConfig, "channels" | "messages">;
+  waitReady: (params: {
+    gateway: {
+      call: (
+        method: string,
+        params?: unknown,
+        options?: { timeoutMs?: number },
+      ) => Promise<unknown>;
+    };
+    timeoutMs?: number;
+    pollIntervalMs?: number;
+  }) => Promise<void>;
+  buildAgentDelivery: (params: { target: string }) => {
+    channel: string;
+    to?: string;
+    replyChannel: string;
+    replyTo: string;
+  };
+  createRuntimeEnvPatch?: () => NodeJS.ProcessEnv;
+  handleAction: (params: {
+    action: "delete" | "edit" | "react" | "thread-create";
+    args: Record<string, unknown>;
+    cfg: OpenClawConfig;
+    accountId?: string | null;
+  }) => Promise<unknown>;
+  createReportNotes: (params: {
+    providerMode: "mock-openai" | "aimock" | "live-frontier";
+    primaryModel: string;
+    alternateModel: string;
+    fastMode: boolean;
+    concurrency: number;
+    isolatedWorkers?: boolean;
+  }) => string[];
+  cleanup?: () => Promise<void>;
+};
+
+type QaRunnerTransportFactory = {
+  id: string;
+  scenarioIds?: readonly string[];
+  matches: (context: { channelId: string; driver: string }) => boolean;
+  create: (context: {
+    channelId: string;
+    commandOptions?: QaRunnerCommandOptions;
+    createAdapter: (
+      params: Omit<
+        QaRunnerTransportAdapter,
+        | "reset"
+        | "sendInbound"
+        | "state"
+        | "waitForCondition"
+        | "waitForNoOutbound"
+        | "waitForOutbound"
+      > & {
+        assertTransportHealthy?: () => void;
+        resetTransport?: () => void | Promise<void>;
+        sendInbound: (input: QaBusInboundMessageInput) => Promise<QaBusMessage>;
+      },
+    ) => QaRunnerTransportAdapter;
+    driver: string;
+    outputDir: string;
+    state: QaRunnerTransportState;
+  }) => Promise<QaRunnerTransportAdapter>;
+};
+
+/** CLI registration and optional transport adapter factory exported by a QA runner plugin. */
 export type QaRunnerCliRegistration = {
   commandName: string;
+  adapterFactory?: QaRunnerTransportFactory;
   register(qa: Command): void;
 };
 
@@ -185,6 +331,17 @@ export function listQaRunnerCliContributions(): readonly QaRunnerCliContribution
       if (!registration) {
         throw new Error(
           `QA runner plugin "${plugin.id}" declared "${runner.commandName}" in openclaw.plugin.json but did not export a matching CLI registration`,
+        );
+      }
+      const adapterFactory = registration.adapterFactory;
+      if (
+        adapterFactory &&
+        (adapterFactory.id !== runner.commandName ||
+          typeof adapterFactory.matches !== "function" ||
+          typeof adapterFactory.create !== "function")
+      ) {
+        throw new Error(
+          `QA runner plugin "${plugin.id}" exported an invalid transport factory for "${runner.commandName}"`,
         );
       }
       contributions.set(runner.commandName, {
