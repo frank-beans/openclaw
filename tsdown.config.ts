@@ -436,6 +436,7 @@ function buildNormalizationCoreDistEntries(): Record<string, string> {
   return {
     index: "packages/normalization-core/src/index.ts",
     "boolean-coercion": "packages/normalization-core/src/boolean-coercion.ts",
+    format: "packages/normalization-core/src/format.ts",
     "number-coercion": "packages/normalization-core/src/number-coercion.ts",
     "record-coerce": "packages/normalization-core/src/record-coerce.ts",
     "string-coerce": "packages/normalization-core/src/string-coerce.ts",
