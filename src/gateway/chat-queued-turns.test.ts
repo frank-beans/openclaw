@@ -130,7 +130,7 @@ describe("chat-queued-turns", () => {
       agentId: "main",
       defaultAgentId: "main",
     });
-    expect(globalMain.map((m) => m.runId).sort()).toEqual(["g-main"]);
+    expect(globalMain.map((m) => m.runId).toSorted()).toEqual(["g-main"]);
     const local = listQueuedChatTurnsForSession({
       chatQueuedTurns: map,
       sessionKeys: ["agent:main:main"],
@@ -161,7 +161,7 @@ describe("chat-queued-turns", () => {
       sessionKeys: ["main"],
     });
     const runIds = abortQueuedChatTurns(map, matches, "rpc");
-    expect(runIds.sort()).toEqual(["qa", "qb"]);
+    expect(runIds.toSorted()).toEqual(["qa", "qb"]);
     expect(a.signal.aborted).toBe(true);
     expect(b.signal.aborted).toBe(true);
     expect(map.size).toBe(0);
