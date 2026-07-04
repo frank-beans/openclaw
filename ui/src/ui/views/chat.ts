@@ -1190,9 +1190,6 @@ function renderSessionWorkspaceRail(
         >
           <span class="nav-collapse-toggle__icon" aria-hidden="true">${icons.panelRightOpen}</span>
         </button>
-        <span class="chat-workspace-rail__collapsed-icon" aria-hidden="true"
-          >${icons.fileText}</span
-        >
       </aside>
     `;
   }

@@ -531,7 +531,8 @@ describeControlUiE2e("Control UI mocked Gateway E2E", () => {
       });
       expect(await gateway.getRequests("sessions.files.list")).toHaveLength(0);
       expect(await page.locator(".chat-workspace-rail__file").count()).toBe(0);
-      expect(await page.locator(".chat-workspace-rail__collapsed-icon svg").count()).toBe(1);
+      expect(await page.locator(".chat-workspace-rail--collapsed").count()).toBe(1);
+      expect(await page.locator(".chat-workbench--workspace-collapsed").count()).toBe(1);
 
       await page.getByRole("button", { name: "Expand session workspace" }).click();
       await page.getByRole("button", { name: "Collapse session workspace" }).waitFor({
@@ -551,7 +552,7 @@ describeControlUiE2e("Control UI mocked Gateway E2E", () => {
         timeout: 10_000,
       });
       expect(await page.locator(".chat-workspace-rail__file").count()).toBe(0);
-      expect(await page.locator(".chat-workspace-rail__collapsed-icon svg").count()).toBe(1);
+      expect(await page.locator(".chat-workspace-rail--collapsed").count()).toBe(1);
 
       await page.getByRole("button", { name: "Expand session workspace" }).click();
       await page.getByRole("button", { name: "Collapse session workspace" }).waitFor({

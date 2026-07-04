@@ -1115,7 +1115,7 @@ describe("chat composer workbench", () => {
     expect(container.querySelector('button[aria-label="Session workspace"]')).toBeNull();
   });
 
-  it("keeps the workspace files rail reachable from the collapsed strip", () => {
+  it("keeps the workspace files rail reachable from the collapsed floating toggle", () => {
     const onToggleCollapsed = vi.fn();
     const container = renderChatView({
       sessionWorkspace: {
@@ -1136,10 +1136,12 @@ describe("chat composer workbench", () => {
     });
 
     expect(container.querySelector(".chat-workspace-rail__list")).toBeNull();
-    expect(container.querySelector(".chat-workspace-rail__collapsed-icon")).not.toBeNull();
+    // Collapsed rail floats over the chat; the workbench must not reserve a rail column.
+    expect(container.querySelector(".chat-workbench--workspace-collapsed")).not.toBeNull();
     const toggle = container.querySelector<HTMLButtonElement>(
       'button[aria-label="Expand session workspace"]',
     );
+    expect(toggle?.closest(".chat-workspace-rail--collapsed")).not.toBeNull();
     expect(toggle?.getAttribute("aria-expanded")).toBe("false");
 
     toggle?.click();

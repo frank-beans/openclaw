@@ -1,5 +1,7 @@
 /* Split View Layout */
 .chat-workbench {
+  /* Anchor for the floating expand toggle rendered by the collapsed workspace rail. */
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(230px, 280px);
   gap: 0;
@@ -9,7 +11,7 @@
 }
 
 .chat-workbench--workspace-collapsed {
-  grid-template-columns: minmax(0, 1fr) 52px;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .chat-split-container {
@@ -52,9 +54,20 @@
 }
 
 .chat-workspace-rail--collapsed {
-  align-items: center;
-  gap: 10px;
-  padding: 12px 8px;
+  /* Collapsed rail reserves no grid column; the expand toggle floats over the
+     chat's top-right corner so closing the panel frees the full width. */
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 6;
+  padding: 0;
+  border-left: 0;
+  background: transparent;
+}
+
+.chat-workspace-rail--collapsed .chat-workspace-rail__collapse-toggle {
+  /* Soft shadow keeps the floating toggle legible over scrolled chat content. */
+  box-shadow: var(--shadow-sm);
 }
 
 .chat-workspace-rail__header {
@@ -111,25 +124,6 @@
 .chat-workspace-rail__file-icon svg {
   width: 15px;
   height: 15px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.5px;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.chat-workspace-rail__collapsed-icon {
-  color: var(--muted);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-}
-
-.chat-workspace-rail__collapsed-icon svg {
-  width: 18px;
-  height: 18px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.5px;
