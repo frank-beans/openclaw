@@ -24,6 +24,11 @@
       "import": "./dist/error-coercion.mjs",
       "default": "./dist/error-coercion.mjs"
     },
+    "./format": {
+      "types": "./dist/format.d.mts",
+      "import": "./dist/format.mjs",
+      "default": "./dist/format.mjs"
+    },
     "./number-coercion": {
       "types": "./dist/number-coercion.d.mts",
       "import": "./dist/number-coercion.mjs",
@@ -46,6 +51,6 @@
     }
   },
   "scripts": {
-    "build": "tsdown src/index.ts src/boolean-coercion.ts src/error-coercion.ts src/number-coercion.ts src/record-coerce.ts src/string-coerce.ts src/string-normalization.ts --no-config --platform node --format esm --dts --out-dir dist --clean"
+    "build": "tsdown src/index.ts src/boolean-coercion.ts src/error-coercion.ts src/format.ts src/number-coercion.ts src/record-coerce.ts src/string-coerce.ts src/string-normalization.ts --no-config --platform node --format esm --dts --out-dir dist --clean"
   }
 }

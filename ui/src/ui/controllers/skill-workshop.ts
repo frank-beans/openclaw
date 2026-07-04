@@ -1,4 +1,5 @@
 // Control UI controller manages skill workshop gateway state.
+import { formatByteSize } from "@openclaw/normalization-core/format";
 import type { GatewayBrowserClient } from "../gateway.ts";
 import {
   normalizeAgentId,
@@ -186,10 +187,12 @@ function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) {
     return "0 B";
   }
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-  return `${(bytes / 1024).toFixed(1)} KB`;
+  return formatByteSize(bytes, {
+    style: "legacy-binary",
+    maxUnit: "kilo",
+    separator: " ",
+    fractionDigits: (_value, unit) => (unit === "byte" ? null : 1),
+  });
 }
 
 function byteLength(value: string): number {
