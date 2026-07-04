@@ -433,6 +433,7 @@ export const hi: TranslationMap = {
     exitedCode: "exited ({code})",
     dockBottom: "Dock to bottom",
     dockRight: "Dock to right",
+    unavailable: "The terminal is not available on this gateway.",
   },
   tabs: {
     agents: "एजेंट",

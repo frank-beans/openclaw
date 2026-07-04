@@ -103,6 +103,11 @@ export class OpenClawTerminalPanel extends LitElement {
   @property({ type: Boolean }) available = false;
   /** Active Control UI color mode, mirrored into the terminal theme. */
   @property({ attribute: false }) themeMode: "dark" | "light" = "dark";
+  /**
+   * Terminal-only document mode (`?view=terminal`), used by the mobile apps'
+   * WebViews: fills the viewport, always open while available, no dock chrome.
+   */
+  @property({ type: Boolean }) fullscreen = false;
 
   @state() private open = false;
   @state() private dock: TerminalDock = "bottom";
@@ -133,15 +138,21 @@ export class OpenClawTerminalPanel extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
-    const layout = loadLayout();
-    this.dock = layout.dock;
-    this.height = layout.height;
-    this.width = layout.width;
-    // Only restore the open state when the surface is actually available.
-    this.open = layout.open && this.available;
-    window.addEventListener("keydown", this.onGlobalKeyDown);
-    window.addEventListener(TOGGLE_EVENT, this.onToggleRequest);
-    window.addEventListener("resize", this.onViewportResize);
+    if (!this.fullscreen) {
+      const layout = loadLayout();
+      this.dock = layout.dock;
+      this.height = layout.height;
+      this.width = layout.width;
+      // Only restore the open state when the surface is actually available.
+      this.open = layout.open && this.available;
+      window.addEventListener("keydown", this.onGlobalKeyDown);
+      window.addEventListener(TOGGLE_EVENT, this.onToggleRequest);
+      window.addEventListener("resize", this.onViewportResize);
+    } else {
+      // Fullscreen documents have no toggle/dock chrome; the panel is simply
+      // open whenever the terminal surface is available.
+      this.open = this.available;
+    }
     if (this.open) {
       void this.ensureInitialSession();
     }
@@ -170,8 +181,9 @@ export class OpenClawTerminalPanel extends LitElement {
           this.closePanel();
         }
         this.disposeAllTabs();
-      } else if (!this.open && loadLayout().open) {
-        // Hello arrived after mount; restore the persisted open state.
+      } else if (!this.open && (this.fullscreen || loadLayout().open)) {
+        // Hello arrived after mount; restore the persisted open state
+        // (fullscreen documents are always open while available).
         this.open = true;
         void this.ensureInitialSession();
       }
@@ -214,6 +226,10 @@ export class OpenClawTerminalPanel extends LitElement {
    * content simply shrinks to make room, so this reads as a real dock.
    */
   private syncLayoutReservation(): void {
+    if (this.fullscreen) {
+      // No shell content to reserve space for in a terminal-only document.
+      return;
+    }
     const root = document.documentElement.style;
     const bottom =
       this.available && this.open && this.dock === "bottom" ? `${this.height}px` : "0px";
@@ -494,15 +510,22 @@ export class OpenClawTerminalPanel extends LitElement {
     if (!this.available || !this.open) {
       return nothing;
     }
-    const style = this.dock === "bottom" ? `height:${this.height}px` : `width:${this.width}px`;
+    const mode = this.fullscreen ? "fullscreen" : this.dock;
+    const style = this.fullscreen
+      ? nothing
+      : this.dock === "bottom"
+        ? `height:${this.height}px`
+        : `width:${this.width}px`;
     return html`
-      <section class="tp tp--${this.dock}" style=${style} aria-label=${t("terminal.title")}>
-        <div
-          class="tp-resizer tp-resizer--${this.dock}"
-          @pointerdown=${(e: PointerEvent) => this.startResize(e)}
-          role="separator"
-          aria-label=${t("terminal.resize")}
-        ></div>
+      <section class="tp tp--${mode}" style=${style} aria-label=${t("terminal.title")}>
+        ${this.fullscreen
+          ? nothing
+          : html`<div
+              class="tp-resizer tp-resizer--${this.dock}"
+              @pointerdown=${(e: PointerEvent) => this.startResize(e)}
+              role="separator"
+              aria-label=${t("terminal.resize")}
+            ></div>`}
         <header class="tp-header">
           <div class="tp-tabs" role="tablist">
             ${this.tabs.map(
@@ -548,35 +571,37 @@ export class OpenClawTerminalPanel extends LitElement {
               ${PLUS_GLYPH}
             </button>
           </div>
-          <div class="tp-actions">
-            <button
-              class="tp-icon ${this.dock === "bottom" ? "is-active" : ""}"
-              type="button"
-              title=${t("terminal.dockBottom")}
-              aria-label=${t("terminal.dockBottom")}
-              @click=${() => this.setDock("bottom")}
-            >
-              ${DOCK_BOTTOM_GLYPH}
-            </button>
-            <button
-              class="tp-icon ${this.dock === "right" ? "is-active" : ""}"
-              type="button"
-              title=${t("terminal.dockRight")}
-              aria-label=${t("terminal.dockRight")}
-              @click=${() => this.setDock("right")}
-            >
-              ${DOCK_RIGHT_GLYPH}
-            </button>
-            <button
-              class="tp-icon"
-              type="button"
-              title=${t("terminal.hide")}
-              aria-label=${t("terminal.hide")}
-              @click=${() => this.closePanel()}
-            >
-              ${CLOSE_GLYPH}
-            </button>
-          </div>
+          ${this.fullscreen
+            ? nothing
+            : html`<div class="tp-actions">
+                <button
+                  class="tp-icon ${this.dock === "bottom" ? "is-active" : ""}"
+                  type="button"
+                  title=${t("terminal.dockBottom")}
+                  aria-label=${t("terminal.dockBottom")}
+                  @click=${() => this.setDock("bottom")}
+                >
+                  ${DOCK_BOTTOM_GLYPH}
+                </button>
+                <button
+                  class="tp-icon ${this.dock === "right" ? "is-active" : ""}"
+                  type="button"
+                  title=${t("terminal.dockRight")}
+                  aria-label=${t("terminal.dockRight")}
+                  @click=${() => this.setDock("right")}
+                >
+                  ${DOCK_RIGHT_GLYPH}
+                </button>
+                <button
+                  class="tp-icon"
+                  type="button"
+                  title=${t("terminal.hide")}
+                  aria-label=${t("terminal.hide")}
+                  @click=${() => this.closePanel()}
+                >
+                  ${CLOSE_GLYPH}
+                </button>
+              </div>`}
         </header>
         ${this.errorText
           ? html`<div class="tp-error" role="alert">${this.errorText}</div>`
@@ -625,6 +650,10 @@ export class OpenClawTerminalPanel extends LitElement {
       right: 0;
       bottom: 0;
       border-left: 1px solid var(--border, #262b34);
+    }
+    /* Terminal-only document (mobile WebViews): fill the viewport, no seams. */
+    .tp--fullscreen {
+      inset: 0;
     }
     .tp-resizer {
       position: absolute;

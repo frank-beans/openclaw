@@ -1645,3 +1645,17 @@
 .chat-controls-dropdown {
   display: none;
 }
+
+/* Terminal-only document (`?view=terminal`, mobile WebViews): centered notice
+   when the gateway refuses or lacks the terminal surface. */
+.terminal-view-unavailable {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  color: var(--muted);
+  background: var(--bg);
+}

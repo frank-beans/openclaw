@@ -129,6 +129,19 @@ export function isTerminalAvailable(
   return hasOperatorAdminAccess(auth) && isGatewayMethodAdvertised(state, "terminal.open") === true;
 }
 
+/**
+ * Terminal-only document mode (`?view=terminal`): the mobile apps embed the
+ * terminal as a full-screen WebView page instead of the whole Control UI.
+ * Fixed per document load — the apps construct the URL, users never toggle it.
+ */
+export function isTerminalOnlyView(search = globalThis.location?.search ?? ""): boolean {
+  try {
+    return new URLSearchParams(search).get("view") === "terminal";
+  } catch {
+    return false;
+  }
+}
+
 function resolveSidebarChatSessionKey(state: AppViewState): string {
   const snapshot = state.hello?.snapshot as
     | { sessionDefaults?: SessionDefaultsSnapshot }

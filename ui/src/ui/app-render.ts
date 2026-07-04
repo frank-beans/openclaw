@@ -26,6 +26,7 @@ import {
   dismissChatError,
   dismissRealtimeTalkError,
   isTerminalAvailable,
+  isTerminalOnlyView,
   switchChatSession,
   switchChatSessionAndWait,
 } from "./app-render.helpers.ts";
@@ -1491,6 +1492,26 @@ export function renderApp(state: AppViewState) {
   // The gateway URL confirmation overlay is always rendered so URL-param flows still work.
   if (!state.connected) {
     return html` ${renderLoginGate(state)} ${renderGatewayUrlConfirmation(state)} `;
+  }
+
+  // Terminal-only document (`?view=terminal`): the mobile apps embed this as a
+  // full-screen WebView page, so render just the terminal — no shell chrome.
+  if (isTerminalOnlyView()) {
+    const terminalAvailable = isTerminalAvailable(state);
+    const terminalMode = resolveTheme(state.theme, state.themeMode).includes("light")
+      ? "light"
+      : "dark";
+    return html`
+      <openclaw-terminal-panel
+        .client=${state.client}
+        .available=${terminalAvailable}
+        .themeMode=${terminalMode}
+        fullscreen
+      ></openclaw-terminal-panel>
+      ${terminalAvailable
+        ? nothing
+        : html`<div class="terminal-view-unavailable">${t("terminal.unavailable")}</div>`}
+    `;
   }
 
   const presenceCount = state.presenceEntries.length;
