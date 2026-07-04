@@ -899,7 +899,7 @@ describe("tui session actions", () => {
     expect(addSystem).not.toHaveBeenCalled();
   });
 
-  it("aborts the in-flight runId when only pendingChatRunId is set", async () => {
+  it("uses session-scoped abort when only pendingChatRunId is set", async () => {
     const abortChat = vi.fn().mockResolvedValue({ ok: true, aborted: true });
     const addSystem = vi.fn();
     const setActivityStatus = vi.fn();
@@ -932,7 +932,6 @@ describe("tui session actions", () => {
 
     expect(abortChat).toHaveBeenCalledWith({
       sessionKey: "agent:main:main",
-      runId: "run-pending",
     });
     expect(addSystem).not.toHaveBeenCalledWith("no active run");
     expect(state.pendingChatRunId).toBeNull();
@@ -1009,15 +1008,16 @@ describe("tui session actions", () => {
     expect(abortChat).toHaveBeenCalledWith({
       sessionKey: "global",
       agentId: "work",
-      runId: "run-work-global",
     });
   });
 
   it("coalesces repeated no-active-run abort notices", async () => {
+    const abortChat = vi.fn().mockResolvedValue({ ok: true, aborted: false });
     const addSystem = vi.fn();
     const requestRender = vi.fn();
 
     const { abortActive } = createTestSessionActions({
+      client: { listSessions: vi.fn(), abortChat } as unknown as TuiBackend,
       chatLog: {
         addSystem,
         clearAll: vi.fn(),
@@ -1031,6 +1031,33 @@ describe("tui session actions", () => {
       coalesceConsecutive: true,
     });
     expect(requestRender).toHaveBeenCalledOnce();
+  });
+
+  it("preserves pending UI state when session abort finds no backend run", async () => {
+    const abortChat = vi.fn().mockResolvedValue({ ok: true, aborted: false });
+    const dropPendingUser = vi.fn();
+    const state = createBaseState({
+      pendingChatRunId: "run-pending",
+      pendingOptimisticUserMessage: true,
+      pendingSubmitDraft: { runId: "run-pending", text: "hello" },
+    });
+
+    const { abortActive } = createTestSessionActions({
+      client: { listSessions: vi.fn(), abortChat } as unknown as TuiBackend,
+      chatLog: {
+        addSystem: vi.fn(),
+        clearAll: vi.fn(),
+        dropPendingUser,
+      } as unknown as import("./components/chat-log.js").ChatLog,
+      state,
+    });
+
+    await abortActive();
+
+    expect(state.pendingChatRunId).toBe("run-pending");
+    expect(state.pendingOptimisticUserMessage).toBe(true);
+    expect(state.pendingSubmitDraft).toEqual({ runId: "run-pending", text: "hello" });
+    expect(dropPendingUser).not.toHaveBeenCalled();
   });
 
   it("does not abort local post-turn maintenance while finishing context", async () => {
@@ -1110,7 +1137,6 @@ describe("tui session actions", () => {
 
     expect(abortChat).toHaveBeenCalledWith({
       sessionKey: "agent:main:main",
-      runId: "run-queued",
     });
     expect(state.pendingChatRunId).toBeNull();
     expect(state.pendingOptimisticUserMessage).toBe(false);
@@ -1137,7 +1163,6 @@ describe("tui session actions", () => {
 
     expect(abortChat).toHaveBeenCalledWith({
       sessionKey: "agent:main:main",
-      runId: "run-queued",
     });
     expect(state.pendingChatRunId).toBeNull();
     expect(setActivityStatus).toHaveBeenCalledWith("aborted");
@@ -1357,49 +1382,5 @@ describe("tui session actions", () => {
       limit: 200,
     });
     expect(state.currentSessionId).toBe("session-work-global");
-  });
-
-  it("detects queueMode change as a UI-relevant session update", async () => {
-    const listSessions = vi.fn().mockResolvedValue({
-      ts: Date.now(),
-      path: "/tmp/sessions.json",
-      count: 1,
-      defaults: {},
-      sessions: [
-        {
-          key: "agent:main:main",
-          model: "sonnet-4.6",
-          modelProvider: "anthropic",
-          totalTokens: 42,
-          queueMode: "followup",
-          updatedAt: 200,
-        },
-      ],
-    });
-    const state = createBaseState({
-      sessionInfo: {
-        model: "sonnet-4.6",
-        modelProvider: "anthropic",
-        totalTokens: 42,
-        queueMode: "steer",
-        updatedAt: 100,
-      },
-    });
-    const updateFooter = vi.fn();
-    const updateAutocompleteProvider = vi.fn();
-    const requestRender = vi.fn();
-
-    const { refreshSessionInfo } = createTestSessionActions({
-      client: { listSessions } as unknown as TuiBackend,
-      state,
-      updateFooter,
-      updateAutocompleteProvider,
-      tui: { requestRender } as unknown as import("@earendil-works/pi-tui").TUI,
-    });
-
-    await refreshSessionInfo();
-
-    expect(state.sessionInfo.queueMode).toBe("followup");
-    expect(requestRender).toHaveBeenCalled();
   });
 });

@@ -123,12 +123,11 @@ keys.
 
 When Gateway admits a prompt into the followup/collect queue (for example a TUI
 or webchat `chat.send` while another turn is active), it keeps a **Gateway-owned
-cancel identity** for that client `runId` even after the original `chat.send`
-RPC has settled.
+cancel identity** for that client `runId` until the queued content runs or is
+dropped. The identity follows content folded into an overflow summary.
 
-- `chat.abort` with a specific `runId` cancels that turn while it is still queued
-  (or promoting), if the requester is authorized (same ownership rules as active
-  runs).
+- `chat.abort` with a specific `runId` cancels that turn while it is still queued,
+  if the requester is authorized (same ownership rules as active runs).
 - `chat.abort` for a session without `runId` cancels **authorized queued turns
   first**, then aborts authorized active runs. That order prevents queue drain
   from promoting work into a half-stopped session.
@@ -137,8 +136,8 @@ RPC has settled.
 - Queued waits are not projected as active agent runs for `sessions.list` and do
   not own active-run timeout semantics; only the active phase does.
 
-Clients (including the TUI) should forward mid-run prompts according to queue
-mode and treat Esc/`/stop` as a session-scoped abort so lost local handles cannot
+Clients (including the TUI) forward mid-run prompts and let Gateway apply the
+queue mode. Esc/`/stop` uses a session-scoped abort so lost local handles cannot
 leave a still-queued prompt running.
 
 - Per-session lanes guarantee that only one agent run touches a given session at a time.

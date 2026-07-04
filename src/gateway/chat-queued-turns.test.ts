@@ -5,7 +5,6 @@ import {
   completeQueuedChatTurn,
   getQueuedChatTurn,
   listQueuedChatTurnsForSession,
-  markQueuedChatTurnPromoting,
   registerQueuedChatTurn,
   type QueuedChatTurnMap,
 } from "./chat-queued-turns.js";
@@ -27,7 +26,6 @@ describe("chat-queued-turns", () => {
         sessionKey: "main",
         ownerConnId: "conn-1",
         ownerDeviceId: "dev-1",
-        kind: "chat-send",
       }),
     ).toBe(true);
     expect(getQueuedChatTurn(map, "run-a")?.sessionKey).toBe("main");
@@ -165,18 +163,5 @@ describe("chat-queued-turns", () => {
     expect(a.signal.aborted).toBe(true);
     expect(b.signal.aborted).toBe(true);
     expect(map.size).toBe(0);
-  });
-
-  it("marks promoting phase", () => {
-    const map = emptyMap();
-    registerQueuedChatTurn({
-      chatQueuedTurns: map,
-      runId: "run-p",
-      controller: new AbortController(),
-      sessionId: "s",
-      sessionKey: "main",
-    });
-    expect(markQueuedChatTurnPromoting(map, "run-p")).toBe(true);
-    expect(getQueuedChatTurn(map, "run-p")?.phase).toBe("promoting");
   });
 });

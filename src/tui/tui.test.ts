@@ -131,38 +131,26 @@ describe("canSubmitTuiChatMessage", () => {
     expect(canSubmitTuiChatMessage({})).toBe(true);
   });
 
-  it("allows local submit while a run is active", () => {
+  it("allows submit while a run is active so the backend owns queue policy", () => {
     expect(
       canSubmitTuiChatMessage({
-        local: true,
         activeChatRunId: "run-active",
       }),
     ).toBe(true);
   });
 
-  it("blocks gateway submit while a run is active", () => {
+  it("allows stop text while a run is active", () => {
     expect(
       canSubmitTuiChatMessage({
-        local: false,
-        activeChatRunId: "run-active",
-      }),
-    ).toBe(false);
-  });
-
-  it("allows gateway stop text while a run is active", () => {
-    expect(
-      canSubmitTuiChatMessage({
-        local: false,
         activeChatRunId: "run-active",
         message: "please stop",
       }),
     ).toBe(true);
   });
 
-  it("allows local stop text while a queued run is pending", () => {
+  it("allows stop text while a queued run is pending", () => {
     expect(
       canSubmitTuiChatMessage({
-        local: true,
         activeChatRunId: "run-active",
         pendingChatRunId: "run-queued",
         message: "please stop",
@@ -186,51 +174,11 @@ describe("canSubmitTuiChatMessage", () => {
     ).toBe(false);
   });
 
-  it("allows gateway submit while a run is active when queueMode is followup", () => {
+  it("blocks submit while optimistic state is pending during an active run", () => {
     expect(
       canSubmitTuiChatMessage({
-        local: false,
-        activeChatRunId: "run-active",
-        queueMode: "followup",
-      }),
-    ).toBe(true);
-  });
-
-  it("blocks submit while optimistic state is pending even in followup mode", () => {
-    expect(
-      canSubmitTuiChatMessage({
-        local: false,
         activeChatRunId: "run-active",
         pendingOptimisticUserMessage: true,
-        queueMode: "followup",
-      }),
-    ).toBe(false);
-  });
-
-  it("allows submit with pending run id when queueMode is collect", () => {
-    expect(
-      canSubmitTuiChatMessage({
-        pendingChatRunId: "run-pending",
-        queueMode: "collect",
-      }),
-    ).toBe(true);
-  });
-
-  it("allows submit with pending run id when queueMode is interrupt", () => {
-    expect(
-      canSubmitTuiChatMessage({
-        pendingChatRunId: "run-pending",
-        queueMode: "interrupt",
-      }),
-    ).toBe(true);
-  });
-
-  it("blocks gateway submit while a run is active when queueMode is steer", () => {
-    expect(
-      canSubmitTuiChatMessage({
-        local: false,
-        activeChatRunId: "run-active",
-        queueMode: "steer",
       }),
     ).toBe(false);
   });

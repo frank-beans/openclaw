@@ -11,7 +11,7 @@ import {
   resolveFollowupDeliveryContextKey,
   resolveFollowupReplyAnchor,
 } from "./drain.js";
-import { getExistingFollowupQueue, getFollowupQueue } from "./state.js";
+import { getExistingFollowupQueue, getFollowupQueue, trimSummaryElisionsToCap } from "./state.js";
 import {
   completeFollowupRunLifecycle,
   isFollowupRunAborted,
@@ -142,28 +142,26 @@ export function enqueueFollowupRun(
         const contextKey = resolveFollowupDeliveryContextKey(item);
         const lastElision = queue.summaryElisions.at(-1);
         if (lastElision?.contextKey === contextKey) {
+          const compactSource = createOverflowSummaryRetrySource(item);
           lastElision.count += 1;
-          lastElision.source = createOverflowSummaryRetrySource(item);
-          lastElision.sourceRefs.add(item);
-          lastElision.allRoomEvents =
-            lastElision.allRoomEvents && item.currentInboundEventKind === "room_event";
-        } else {
-          if (queue.summaryElisions.length >= queue.cap) {
-            const evicted = queue.summaryElisions.shift();
-            if (evicted) {
-              queue.evictedSummaryCount += evicted.count;
-              completeFollowupRunLifecycle(evicted.source);
-            }
+          lastElision.sources.push(compactSource);
+          lastElision.sourceRefs.set(item, compactSource);
+          if (queue.activeSummarySources.has(item)) {
+            queue.activeSummarySources.add(compactSource);
           }
+        } else {
+          const compactSource = createOverflowSummaryRetrySource(item);
           queue.summaryElisions.push({
             contextKey,
             count: 1,
-            source: createOverflowSummaryRetrySource(item),
-            sourceRefs: new WeakSet([item]),
-            allRoomEvents: item.currentInboundEventKind === "room_event",
+            sources: [compactSource],
+            sourceRefs: new WeakMap([[item, compactSource]]),
           });
+          if (queue.activeSummarySources.has(item)) {
+            queue.activeSummarySources.add(compactSource);
+          }
         }
-        completeFollowupRunLifecycle(item);
+        trimSummaryElisionsToCap(queue);
       }
     }
   }
@@ -171,6 +169,7 @@ export function enqueueFollowupRun(
     return false;
   }
 
+  run.queueAbortSignal = queue.abortController.signal;
   queue.items.push(run);
   markFollowupRunEnqueued(run);
   if (recentMessageIdKey) {

@@ -81,10 +81,6 @@ function isBtwCommand(text: string): boolean {
   return /^\/(?:btw|side)(?::|\s|$)/i.test(text.trim());
 }
 
-function isQueueDirective(text: string): boolean {
-  return /^\/queue(?:\s|$)/i.test(text.trim());
-}
-
 function isSlashStopCommand(text: string): boolean {
   const trimmed = text.trim();
   return trimmed.startsWith("/") && isChatStopCommandText(trimmed);
@@ -739,11 +735,9 @@ export function createCommandHandlers(context: CommandHandlerContext) {
         await abortActive();
         break;
       case "stop":
-        if (hasTrackedAbortTarget()) {
-          await abortActive({ preferActive: true });
-          break;
-        }
-        await sendMessage(raw);
+        // Queued client runs can terminalize before the followup executes, so
+        // local run ids are not a complete stop target inventory.
+        await abortActive({ preferActive: true });
         break;
       case "settings":
         openSettings();
@@ -771,25 +765,19 @@ export function createCommandHandlers(context: CommandHandlerContext) {
       return;
     }
     const isBtw = isBtwCommand(text);
-    const isQueueCmd = isQueueDirective(text);
     const busy = Boolean(
       state.activeChatRunId || state.pendingChatRunId || state.pendingOptimisticUserMessage,
     );
     if (
-      hasTrackedAbortTarget() &&
-      (isSlashStopCommand(text) || (busy && isChatStopCommandText(text)))
+      isSlashStopCommand(text) ||
+      (hasTrackedAbortTarget() && busy && isChatStopCommandText(text))
     ) {
       await abortActive({ preferActive: true });
       return;
     }
-    const effectiveQueueMode = state.sessionInfo.queueMode ?? "steer";
-    const allowQueuedSend = effectiveQueueMode !== "steer";
-    if (
-      !isBtw &&
-      (state.pendingOptimisticUserMessage ||
-        (!(allowQueuedSend || isQueueCmd) &&
-          (state.pendingChatRunId || (opts.local !== true && state.activeChatRunId))))
-    ) {
+    // The Gateway owns queue policy. TUI only serializes pending RPC admission;
+    // an already-active run must not suppress steer/followup/collect/interrupt.
+    if (!isBtw && (state.pendingOptimisticUserMessage || state.pendingChatRunId)) {
       addBlockedChatSubmitNotice(chatLog);
       tui.requestRender();
       return;

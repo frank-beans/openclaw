@@ -96,7 +96,6 @@ export type SessionInfo = {
   effectiveResponseUsage?: ResponseUsageMode;
   updatedAt?: number | null;
   displayName?: string;
-  queueMode?: "steer" | "followup" | "collect" | "interrupt";
 };
 
 export type SessionScope = "per-sender" | "global";

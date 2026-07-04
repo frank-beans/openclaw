@@ -8,8 +8,6 @@
  */
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 
-export type QueuedChatTurnPhase = "queued" | "promoting";
-
 export type QueuedChatTurnEntry = {
   controller: AbortController;
   sessionId: string;
@@ -17,12 +15,6 @@ export type QueuedChatTurnEntry = {
   agentId?: string;
   ownerConnId?: string;
   ownerDeviceId?: string;
-  kind?: "chat-send" | "agent";
-  controlUiVisible?: boolean;
-  phase: QueuedChatTurnPhase;
-  enqueuedAtMs: number;
-  /** Queue key used by followup drain (session key family). */
-  queueKey?: string;
 };
 
 export type QueuedChatTurnMap = Map<string, QueuedChatTurnEntry>;
@@ -36,11 +28,6 @@ export type RegisterQueuedChatTurnParams = {
   agentId?: string;
   ownerConnId?: string;
   ownerDeviceId?: string;
-  kind?: QueuedChatTurnEntry["kind"];
-  controlUiVisible?: boolean;
-  queueKey?: string;
-  phase?: QueuedChatTurnPhase;
-  now?: number;
 };
 
 export function registerQueuedChatTurn(params: RegisterQueuedChatTurnParams): boolean {
@@ -54,7 +41,6 @@ export function registerQueuedChatTurn(params: RegisterQueuedChatTurnParams): bo
   }
   const existing = params.chatQueuedTurns.get(runId);
   if (existing && existing.controller === params.controller) {
-    existing.phase = params.phase ?? existing.phase;
     return true;
   }
   if (existing) {
@@ -67,11 +53,6 @@ export function registerQueuedChatTurn(params: RegisterQueuedChatTurnParams): bo
     agentId: normalizeOptionalString(params.agentId)?.toLowerCase(),
     ownerConnId: normalizeOptionalString(params.ownerConnId),
     ownerDeviceId: normalizeOptionalString(params.ownerDeviceId),
-    kind: params.kind,
-    controlUiVisible: params.controlUiVisible,
-    phase: params.phase ?? "queued",
-    enqueuedAtMs: params.now ?? Date.now(),
-    queueKey: normalizeOptionalString(params.queueKey) ?? sessionKey,
   };
   params.chatQueuedTurns.set(runId, entry);
   return true;
@@ -94,18 +75,6 @@ export function getQueuedChatTurn(
     return undefined;
   }
   return chatQueuedTurns.get(key);
-}
-
-export function markQueuedChatTurnPromoting(
-  chatQueuedTurns: QueuedChatTurnMap,
-  runId: string,
-): boolean {
-  const entry = getQueuedChatTurn(chatQueuedTurns, runId);
-  if (!entry) {
-    return false;
-  }
-  entry.phase = "promoting";
-  return true;
 }
 
 /**

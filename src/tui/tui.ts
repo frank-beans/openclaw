@@ -403,30 +403,16 @@ export async function drainAndStopTuiSafely(tui: DrainableTui): Promise<void> {
 }
 
 export function canSubmitTuiChatMessage(params: {
-  local?: boolean;
   activeChatRunId?: string | null;
   pendingChatRunId?: string | null;
   pendingOptimisticUserMessage?: boolean;
   message?: string;
-  queueMode?: "steer" | "followup" | "collect" | "interrupt";
 }): boolean {
   const stopText = params.message ? isChatStopCommandText(params.message) : false;
   if (stopText && (params.activeChatRunId || params.pendingChatRunId)) {
     return true;
   }
-  // Always block while awaiting the ACK for the current optimistic send.
-  if (params.pendingOptimisticUserMessage === true) {
-    return false;
-  }
-  const allowQueuedSend = (params.queueMode ?? "steer") !== "steer";
-  if (allowQueuedSend) {
-    return true;
-  }
-  const pending = Boolean(params.pendingChatRunId);
-  if (!params.local && params.activeChatRunId) {
-    return false;
-  }
-  return !pending;
+  return !params.pendingChatRunId && params.pendingOptimisticUserMessage !== true;
 }
 
 const TUI_BUSY_ACTIVITY_STATUSES = new Set([
@@ -1437,12 +1423,10 @@ export async function runTui(opts: RunTuiOptions): Promise<TuiResult> {
   updateAutocompleteProvider();
   const canSubmitChatMessage = (message: string) =>
     canSubmitTuiChatMessage({
-      local: isLocalMode,
       activeChatRunId: state.activeChatRunId,
       pendingChatRunId: state.pendingChatRunId,
       pendingOptimisticUserMessage: state.pendingOptimisticUserMessage,
       message,
-      queueMode: state.sessionInfo.queueMode,
     });
   const notifyBlockedChatSubmit = () => {
     addBlockedChatSubmitNotice(chatLog);

@@ -92,7 +92,6 @@ function createHarness(params?: {
   consumeCompletedRunForPendingSend?: ConsumeCompletedRunMock;
   isRunObserved?: (runId: string) => boolean;
   flushPendingHistoryRefreshIfIdle?: FlushPendingHistoryRefreshMock;
-  sessionInfo?: Record<string, unknown>;
 }) {
   const sendChat =
     params?.sendChat ??
@@ -144,7 +143,7 @@ function createHarness(params?: {
     pendingSubmitDraft: null as { runId: string; text: string } | null,
     activityStatus: params?.activityStatus ?? "idle",
     isConnected: params?.isConnected ?? true,
-    sessionInfo: params?.sessionInfo ?? {},
+    sessionInfo: {},
   };
 
   const { handleCommand, openSessionSelector } = createCommandHandlers({
@@ -1111,7 +1110,7 @@ describe("tui command handlers", () => {
     expect(state.pendingChatRunId).toEqual(expect.any(String));
   });
 
-  it("blocks gateway slash prompts while a run is active", async () => {
+  it("forwards gateway slash prompts while a run is active", async () => {
     const { handleCommand, sendChat, addPendingUser, addSystem } = createHarness({
       activeChatRunId: "run-active",
       activityStatus: "streaming",
@@ -1119,11 +1118,10 @@ describe("tui command handlers", () => {
 
     await handleCommand("/context detail");
 
-    expect(sendChat).not.toHaveBeenCalled();
-    expect(addPendingUser).not.toHaveBeenCalled();
-    expect(addSystem).toHaveBeenCalledWith(
+    expectSendChatFields(sendChat, { message: "/context detail" });
+    expect(addPendingUser).toHaveBeenCalledWith(expect.any(String), "/context detail");
+    expect(addSystem).not.toHaveBeenCalledWith(
       "agent is busy — press Esc to abort before sending a new message",
-      { coalesceConsecutive: true },
     );
   });
 
@@ -1142,19 +1140,15 @@ describe("tui command handlers", () => {
     expect(addUser).not.toHaveBeenCalled();
   });
 
-  it("sends slash stop to the backend when there is no tracked run", async () => {
+  it("routes slash stop to session abort when there is no tracked run", async () => {
     const abortActive = vi.fn().mockResolvedValue(undefined);
     const { handleCommand, sendChat, addPendingUser } = createHarness({ abortActive });
 
     await handleCommand("/stop");
 
-    expect(abortActive).not.toHaveBeenCalled();
-    expect(sendChat).toHaveBeenCalledTimes(1);
-    expectSendChatFields(sendChat, {
-      message: "/stop",
-      sessionKey: "agent:main:main",
-    });
-    expect(addPendingUser).toHaveBeenCalledWith(expect.any(String), "/stop");
+    expect(abortActive).toHaveBeenCalledWith({ preferActive: true });
+    expect(sendChat).not.toHaveBeenCalled();
+    expect(addPendingUser).not.toHaveBeenCalled();
   });
 
   it("sends broad stop-like text as a normal prompt when idle", async () => {
@@ -1201,27 +1195,25 @@ describe("tui command handlers", () => {
     );
   });
 
-  it("blocks gateway sends while the current run is finishing", async () => {
-    const { handleCommand, sendChat, addUser, addSystem } = createHarness({
+  it("forwards gateway sends while the current run is finishing", async () => {
+    const { handleCommand, sendChat, addPendingUser, addSystem } = createHarness({
       activeChatRunId: "run-active",
       activityStatus: "finishing context",
     });
 
     await handleCommand("/context detail");
 
-    expect(sendChat).not.toHaveBeenCalled();
-    expect(addUser).not.toHaveBeenCalled();
-    expect(addSystem).toHaveBeenCalledWith(
+    expect(sendChat).toHaveBeenCalledTimes(1);
+    expect(addPendingUser).toHaveBeenCalledWith(expect.any(String), "/context detail");
+    expect(addSystem).not.toHaveBeenCalledWith(
       "agent is busy — press Esc to abort before sending a new message",
-      { coalesceConsecutive: true },
     );
   });
 
-  it("allows gateway sends while a run is active when queueMode is followup", async () => {
+  it("forwards gateway sends while a run is active so Gateway owns queue policy", async () => {
     const { handleCommand, sendChat, addPendingUser, addSystem } = createHarness({
       activeChatRunId: "run-active",
       activityStatus: "streaming",
-      sessionInfo: { queueMode: "followup" },
     });
 
     await handleCommand("follow up question");
@@ -1233,12 +1225,11 @@ describe("tui command handlers", () => {
     );
   });
 
-  it("blocks sends while optimistic user message is pending even in followup mode", async () => {
+  it("blocks sends while optimistic user message admission is pending", async () => {
     const { handleCommand, sendChat, addSystem } = createHarness({
       activeChatRunId: "run-active",
       pendingOptimisticUserMessage: true,
       activityStatus: "sending",
-      sessionInfo: { queueMode: "followup" },
     });
 
     await handleCommand("another message");
@@ -1256,7 +1247,6 @@ describe("tui command handlers", () => {
       sendChat,
       activeChatRunId: "run-active",
       activityStatus: "streaming",
-      sessionInfo: { queueMode: "followup" },
     });
 
     await handleCommand("queued followup");
@@ -1586,6 +1576,17 @@ describe("tui command handlers", () => {
     expect(addSystem).not.toHaveBeenCalledWith(
       "agent is busy — press Esc to abort before sending a new message",
     );
+  });
+
+  it("allows colon-form /queue directives during an active run", async () => {
+    const { handleCommand, sendChat } = createHarness({
+      activeChatRunId: "run-active",
+      activityStatus: "streaming",
+    });
+
+    await handleCommand("/queue:followup");
+
+    expectSendChatFields(sendChat, { message: "/queue:followup" });
   });
 
   it("blocks /queue while optimistic user message is pending", async () => {
