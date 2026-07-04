@@ -342,11 +342,11 @@ function printHuman(report: Report, cpuProfilePath?: string): void {
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
+  const options = parseIssue78851ModelResolutionOptions(args);
   if (issue78851ModelResolutionHelpRequested(args)) {
     process.stdout.write(issue78851ModelResolutionUsage());
     return;
   }
-  const options = parseIssue78851ModelResolutionOptions(args);
   const tempRoot = await mkdtemp(path.join(tmpdir(), "openclaw-issue-78851-"));
   const workspaceDir = path.join(tempRoot, "workspace");
   await mkdir(workspaceDir, { recursive: true });
