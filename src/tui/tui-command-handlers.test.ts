@@ -1246,6 +1246,7 @@ describe("tui command handlers", () => {
     expect(sendChat).not.toHaveBeenCalled();
     expect(addSystem).toHaveBeenCalledWith(
       "agent is busy — press Esc to abort before sending a new message",
+      { coalesceConsecutive: true },
     );
   });
 
@@ -1599,6 +1600,7 @@ describe("tui command handlers", () => {
     expect(sendChat).not.toHaveBeenCalled();
     expect(addSystem).toHaveBeenCalledWith(
       "agent is busy — press Esc to abort before sending a new message",
+      { coalesceConsecutive: true },
     );
   });
 });
