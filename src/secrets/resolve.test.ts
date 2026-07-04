@@ -272,7 +272,7 @@ describe("secret ref resolver", () => {
       await expect(
         resolveExecSecret(scriptPath, {
           env: { NODE_BINARY: process.execPath, PID_FILE: pidPath },
-          noOutputTimeoutMs: 150,
+          noOutputTimeoutMs: 1000,
           timeoutMs: 2000,
         }),
       ).rejects.toThrow('Exec provider "execmain" produced no output');

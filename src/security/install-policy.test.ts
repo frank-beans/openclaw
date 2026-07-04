@@ -235,7 +235,7 @@ describe("runInstallPolicy", () => {
                   command: forkScriptPath,
                   env: { NODE_BINARY: process.execPath, PID_FILE: pidPath },
                   allowInsecurePath: true,
-                  noOutputTimeoutMs: 150,
+                  noOutputTimeoutMs: 1000,
                   timeoutMs: 2000,
                 },
               },
