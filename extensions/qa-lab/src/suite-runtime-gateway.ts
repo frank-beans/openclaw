@@ -75,10 +75,11 @@ async function waitForConfigRestartSettle(
   env: Pick<QaSuiteRuntimeEnv, "gateway" | "transport">,
   restartDelayMs = 1_000,
   timeoutMs = 60_000,
+  settleBufferMs = 750,
 ) {
   const startedAt = Date.now();
   const deadline = startedAt + timeoutMs;
-  const readyAfterMs = restartDelayMs + 750;
+  const readyAfterMs = restartDelayMs + settleBufferMs;
   let lastHealthError: unknown = null;
 
   while (Date.now() < deadline) {
@@ -243,6 +244,7 @@ async function runConfigMutation(params: {
   };
   note?: string;
   restartDelayMs?: number;
+  restartSettleBufferMs?: number;
   replacePaths?: readonly string[];
 }) {
   const restartDelayMs = params.restartDelayMs ?? 1_000;
@@ -270,7 +272,12 @@ async function runConfigMutation(params: {
         },
         { timeoutMs },
       );
-      await waitForConfigRestartSettle(params.env, restartDelayMs, timeoutMs);
+      await waitForConfigRestartSettle(
+        params.env,
+        restartDelayMs,
+        timeoutMs,
+        params.restartSettleBufferMs,
+      );
       return result;
     } catch (error) {
       if (isConfigHashConflict(error)) {
@@ -291,7 +298,12 @@ async function runConfigMutation(params: {
       if (!isGatewayRestartRace(error)) {
         throw error;
       }
-      await waitForConfigRestartSettle(params.env, restartDelayMs, timeoutMs);
+      await waitForConfigRestartSettle(
+        params.env,
+        restartDelayMs,
+        timeoutMs,
+        params.restartSettleBufferMs,
+      );
       const postRestartSnapshot = await readConfigSnapshot(params.env);
       if (isConfigMutationNoopForSnapshot(params.action, postRestartSnapshot.config, params.raw)) {
         return { ok: true, restarted: true };
@@ -320,6 +332,7 @@ async function patchConfig(params: {
   };
   note?: string;
   restartDelayMs?: number;
+  restartSettleBufferMs?: number;
   replacePaths?: readonly string[];
 }) {
   return await runConfigMutation({
@@ -330,6 +343,7 @@ async function patchConfig(params: {
     deliveryContext: params.deliveryContext,
     note: params.note,
     restartDelayMs: params.restartDelayMs,
+    restartSettleBufferMs: params.restartSettleBufferMs,
     replacePaths: params.replacePaths,
   });
 }
