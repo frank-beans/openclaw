@@ -426,7 +426,30 @@ export class EmbeddedTuiBackend implements TuiBackend {
     return { runId };
   }
 
-  async abortChat(opts: { sessionKey: string; agentId?: string; runId: string }) {
+  async abortChat(opts: { sessionKey: string; agentId?: string; runId?: string }) {
+    if (!opts.runId) {
+      // Session-scoped abort for local embedded: abort all matching runs.
+      let aborted = false;
+      for (const [runId, run] of this.runs) {
+        if (run.sessionKey !== opts.sessionKey) {
+          continue;
+        }
+        if (opts.sessionKey === "global") {
+          const defaultAgentId = resolveDefaultAgentId(getRuntimeConfig());
+          const requestedAgentId = opts.agentId ? normalizeAgentId(opts.agentId) : defaultAgentId;
+          const runAgentId = run.agentId ? normalizeAgentId(run.agentId) : defaultAgentId;
+          if (runAgentId !== requestedAgentId) {
+            continue;
+          }
+        }
+        if (!this.isAbortableRun(runId, run)) {
+          continue;
+        }
+        run.controller.abort();
+        aborted = true;
+      }
+      return { ok: true, aborted };
+    }
     const run = this.runs.get(opts.runId);
     if (!run || run.sessionKey !== opts.sessionKey) {
       return { ok: true, aborted: false };

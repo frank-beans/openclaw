@@ -211,11 +211,11 @@ export class GatewayChatClient implements TuiBackend {
     return status ? { runId: acceptedRunId, status } : { runId: acceptedRunId };
   }
 
-  async abortChat(opts: { sessionKey: string; agentId?: string; runId: string }) {
+  async abortChat(opts: { sessionKey: string; agentId?: string; runId?: string }) {
     return await this.client.request<{ ok: boolean; aborted: boolean }>("chat.abort", {
       sessionKey: opts.sessionKey,
       ...(opts.agentId ? { agentId: opts.agentId } : {}),
-      runId: opts.runId,
+      ...(opts.runId ? { runId: opts.runId } : {}),
     });
   }
 

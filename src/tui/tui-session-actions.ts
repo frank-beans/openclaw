@@ -637,22 +637,32 @@ export function createSessionActions(context: SessionActionContext) {
               ? state.pendingChatRunId
               : (state.activeChatRunId ?? state.pendingChatRunId ?? null),
           ].filter((runId) => runId !== null);
-    if (runIds.length === 0) {
+    // Esc/stop uses session-scoped abort even when local run ids are missing so
+    // Gateway can cancel authorized queued turns that outlived chat.send.
+    if (runIds.length === 0 && !params?.preferActive) {
       chatLog.addSystem("no active run", { coalesceConsecutive: true });
       tui.requestRender();
       return;
     }
     const abortsPendingRun = Boolean(
-      state.pendingChatRunId && runIds.includes(state.pendingChatRunId),
+      state.pendingChatRunId && (params?.preferActive || runIds.includes(state.pendingChatRunId)),
     );
     const pendingRunId = state.pendingChatRunId;
+    const sessionAbortParams = {
+      sessionKey: state.currentSessionKey,
+      ...(state.currentSessionKey === "global" ? { agentId: state.currentAgentId } : {}),
+    };
     try {
-      for (const runId of runIds) {
-        await client.abortChat({
-          sessionKey: state.currentSessionKey,
-          ...(state.currentSessionKey === "global" ? { agentId: state.currentAgentId } : {}),
-          runId,
-        });
+      if (params?.preferActive) {
+        // Gateway contract: cancel authorized queued turns first, then active.
+        await client.abortChat(sessionAbortParams);
+      } else {
+        for (const runId of runIds) {
+          await client.abortChat({
+            ...sessionAbortParams,
+            runId,
+          });
+        }
       }
       state.pendingChatRunId = null;
       if (abortsPendingRun) {

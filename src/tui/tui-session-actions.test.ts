@@ -1082,9 +1082,9 @@ describe("tui session actions", () => {
 
     await abortActive({ preferActive: true });
 
+    // Session-scoped abort: Gateway cancels authorized queued turns first, then active.
     expect(abortChat).toHaveBeenCalledWith({
       sessionKey: "agent:main:main",
-      runId: "run-finishing",
     });
     expect(setActivityStatus).toHaveBeenCalledWith("aborted");
   });
@@ -1161,13 +1161,10 @@ describe("tui session actions", () => {
 
     await abortActive({ preferActive: true });
 
-    expect(abortChat).toHaveBeenNthCalledWith(1, {
+    // One session abort covers queued + active with Gateway-owned cancel order.
+    expect(abortChat).toHaveBeenCalledTimes(1);
+    expect(abortChat).toHaveBeenCalledWith({
       sessionKey: "agent:main:main",
-      runId: "run-queued",
-    });
-    expect(abortChat).toHaveBeenNthCalledWith(2, {
-      sessionKey: "agent:main:main",
-      runId: "run-active",
     });
     expect(state.pendingChatRunId).toBeNull();
     expect(setActivityStatus).toHaveBeenCalledWith("aborted");

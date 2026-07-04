@@ -1267,10 +1267,10 @@ export async function runPreparedReply(
       extractedFileImages: opts?.extractedFileImages,
     }),
   );
-  const queuedFollowupAbortSignal =
-    inboundEventKind === "room_event"
-      ? (opts?.queuedFollowupAbortSignal ?? opts?.abortSignal)
-      : undefined;
+  // Always attach an abort signal for queued followups so Gateway can cancel a
+  // turn after chat.send terminalizes (TUI/operator Esc) without waiting for
+  // promote. room_event historically had this; all admission kinds need it.
+  const queuedFollowupAbortSignal = opts?.queuedFollowupAbortSignal ?? opts?.abortSignal;
   const userTurnMediaForPersistence = buildPersistedUserTurnMediaInputsFromFields(ctx);
   const inputProvenance = ctx.InputProvenance ?? sessionCtx.InputProvenance;
   const userTurnTimestamp = normalizeMessageTimestampMs(ctx.Timestamp);

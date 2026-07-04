@@ -147,6 +147,15 @@ import {
   resolveEffectiveChatHistoryMaxChars,
 } from "../chat-display-projection.js";
 import { sanitizeChatSendMessageInput } from "../chat-input-sanitize.js";
+import {
+  abortQueuedChatTurnById,
+  abortQueuedChatTurns,
+  completeQueuedChatTurn,
+  listQueuedChatTurnsForSession,
+  registerQueuedChatTurn,
+  type QueuedChatTurnEntry,
+  type QueuedChatTurnMap,
+} from "../chat-queued-turns.js";
 import { stripEnvelopeFromMessage } from "../chat-sanitize.js";
 import { augmentChatHistoryWithCliSessionImports } from "../cli-session-history.js";
 import { isSuppressedControlReplyText } from "../control-reply-text.js";
@@ -2422,6 +2431,69 @@ function resolveAuthorizedRunsForSessionKeys(params: {
   };
 }
 
+function ensureChatQueuedTurns(context: GatewayRequestContext): QueuedChatTurnMap {
+  if (!context.chatQueuedTurns) {
+    (context as { chatQueuedTurns: QueuedChatTurnMap }).chatQueuedTurns = new Map();
+  }
+  return context.chatQueuedTurns;
+}
+
+function canRequesterAbortQueuedChatTurn(
+  entry: QueuedChatTurnEntry,
+  requester: ChatAbortRequester,
+): boolean {
+  // Same ownership rules as active chat runs.
+  if (requester.isAdmin) {
+    return true;
+  }
+  const ownerDeviceId = normalizeOptionalText(entry.ownerDeviceId);
+  const ownerConnId = normalizeOptionalText(entry.ownerConnId);
+  if (!ownerDeviceId && !ownerConnId) {
+    return true;
+  }
+  if (ownerDeviceId && requester.deviceId && ownerDeviceId === requester.deviceId) {
+    return true;
+  }
+  if (ownerConnId && requester.connId && ownerConnId === requester.connId) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Cancel authorized queued turns for a session BEFORE active-run abort so
+ * drain cannot promote work into a half-aborted session.
+ */
+function abortAuthorizedQueuedTurnsForSession(params: {
+  context: GatewayRequestContext;
+  sessionKeys: string[];
+  sessionId?: string;
+  agentId?: string;
+  defaultAgentId: string;
+  requester: ChatAbortRequester;
+  stopReason?: string;
+}): { runIds: string[]; matched: number; unauthorizedOnly: boolean } {
+  const chatQueuedTurns = ensureChatQueuedTurns(params.context);
+  const matches = listQueuedChatTurnsForSession({
+    chatQueuedTurns,
+    sessionKeys: params.sessionKeys,
+    sessionIds: [params.sessionId],
+    agentId: params.agentId,
+    defaultAgentId: params.defaultAgentId,
+  });
+  if (matches.length === 0) {
+    return { runIds: [], matched: 0, unauthorizedOnly: false };
+  }
+  const authorized = matches.filter((m) =>
+    canRequesterAbortQueuedChatTurn(m.entry, params.requester),
+  );
+  if (authorized.length === 0) {
+    return { runIds: [], matched: matches.length, unauthorizedOnly: true };
+  }
+  const runIds = abortQueuedChatTurns(chatQueuedTurns, authorized, params.stopReason);
+  return { runIds, matched: matches.length, unauthorizedOnly: false };
+}
+
 async function abortChatRunsForSessionKeyWithPartials(params: {
   context: GatewayRequestContext;
   ops: ChatAbortOps;
@@ -2436,6 +2508,17 @@ async function abortChatRunsForSessionKeyWithPartials(params: {
   requester: ChatAbortRequester;
 }): Promise<{ aborted: boolean; runIds: string[]; unauthorized: boolean }> {
   const sessionKeys = [params.sessionKey, ...(params.sessionKeyAliases ?? [])];
+  // Queued-turn cancel MUST run before active abort so followup drain cannot
+  // promote cancelled work into the gap between active stop and queue clear.
+  const queuedAbort = abortAuthorizedQueuedTurnsForSession({
+    context: params.context,
+    sessionKeys,
+    sessionId: params.sessionId,
+    agentId: params.agentId,
+    defaultAgentId: params.defaultAgentId,
+    requester: params.requester,
+    stopReason: params.stopReason,
+  });
   const { matchedSessionRuns, authorizedRuns } = resolveAuthorizedRunsForSessionKeys({
     chatAbortControllers: params.context.chatAbortControllers,
     sessionKeys,
@@ -2454,11 +2537,16 @@ async function abortChatRunsForSessionKeyWithPartials(params: {
     defaultAgentId: params.defaultAgentId,
     requester: params.requester,
   });
-  if (authorizedRuns.length === 0 && authorizedPendingAgentRuns.length === 0) {
+  if (
+    authorizedRuns.length === 0 &&
+    authorizedPendingAgentRuns.length === 0 &&
+    queuedAbort.runIds.length === 0
+  ) {
     return {
       aborted: false,
       runIds: [],
-      unauthorized: matchedSessionRuns > 0 || matchedPendingAgentRuns > 0,
+      unauthorized:
+        matchedSessionRuns > 0 || matchedPendingAgentRuns > 0 || queuedAbort.unauthorizedOnly,
     };
   }
   const authorizedRunIdSet = new Set(authorizedRuns.map((run) => run.runId));
@@ -2468,7 +2556,8 @@ async function abortChatRunsForSessionKeyWithPartials(params: {
     runIds: authorizedRunIdSet,
     abortOrigin: params.abortOrigin,
   });
-  const runIds: string[] = [];
+  // Queued cancellations already applied above; keep them first in the response.
+  const runIds: string[] = [...queuedAbort.runIds];
   for (const { runId, sessionKey } of authorizedRuns) {
     const res = abortChatRunById(params.ops, {
       runId,
@@ -2493,7 +2582,7 @@ async function abortChatRunsForSessionKeyWithPartials(params: {
     runIds.push(runId);
   }
   const res = { aborted: runIds.length > 0, runIds, unauthorized: false };
-  if (res.aborted) {
+  if (res.aborted && snapshots.length > 0) {
     const abortedRunIds = new Set(runIds);
     await persistAbortedPartials({
       context: params.context,
@@ -3323,6 +3412,53 @@ export const chatHandlers: GatewayRequestHandlers = {
           stopReason: "rpc",
         });
         respond(true, { ok: true, aborted: true, runIds: [runId] });
+        return;
+      }
+      // Queued followup/collect turns keep a cancel identity after chat.send
+      // terminalizes; abort them here so Esc cannot report done while they run.
+      const chatQueuedTurns = ensureChatQueuedTurns(context);
+      const queued = chatQueuedTurns.get(runId);
+      if (queued) {
+        const abortSessionKeysForQueued = new Set([rawSessionKey, canonicalAbortSessionKey]);
+        if (
+          !abortSessionKeysForQueued.has(queued.sessionKey) &&
+          !canRequesterAbortQueuedChatTurn(queued, requester)
+        ) {
+          respond(
+            false,
+            undefined,
+            errorShape(ErrorCodes.INVALID_REQUEST, "runId does not match sessionKey"),
+          );
+          return;
+        }
+        if (
+          normalizedAgentIdOverride &&
+          queued.sessionKey === "global" &&
+          resolveStoredGlobalRunAgentId(queued.agentId, defaultAgentId) !==
+            normalizedAgentIdOverride
+        ) {
+          respond(
+            false,
+            undefined,
+            errorShape(ErrorCodes.INVALID_REQUEST, "runId does not match agentId"),
+          );
+          return;
+        }
+        if (!canRequesterAbortQueuedChatTurn(queued, requester)) {
+          respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "unauthorized"));
+          return;
+        }
+        const queuedRes = abortQueuedChatTurnById(chatQueuedTurns, {
+          runId,
+          sessionKey: queued.sessionKey,
+          stopReason: "rpc",
+          allowSessionMismatch: true,
+        });
+        respond(true, {
+          ok: true,
+          aborted: queuedRes.aborted,
+          runIds: queuedRes.aborted ? [runId] : [],
+        });
         return;
       }
       respond(true, { ok: true, aborted: false, runIds: [] });
@@ -4244,6 +4380,27 @@ export const chatHandlers: GatewayRequestHandlers = {
               requestedSessionId,
               resumeRequestedSession: controlUiReconnectResume.resumeRequested,
               abortSignal: activeRunAbort.controller.signal,
+              // Keep a Gateway-owned cancel identity after this chat.send
+              // terminalizes while the prompt waits in followup/collect queue.
+              queuedFollowupLifecycle: {
+                onEnqueued: () => {
+                  registerQueuedChatTurn({
+                    chatQueuedTurns: ensureChatQueuedTurns(context),
+                    runId: clientRunId,
+                    controller: activeRunAbort.controller,
+                    sessionId: backingSessionId ?? clientRunId,
+                    sessionKey,
+                    agentId: selectedAgent.agentId,
+                    ownerConnId: normalizeOptionalText(client?.connId),
+                    ownerDeviceId: normalizeOptionalText(client?.connect?.device?.id),
+                    kind: "chat-send",
+                    queueKey: sessionKey,
+                  });
+                },
+                onComplete: () => {
+                  completeQueuedChatTurn(ensureChatQueuedTurns(context), clientRunId);
+                },
+              },
               images: replyOptionImages,
               imageOrder: imageOrder.length > 0 ? imageOrder : undefined,
               thinkingLevelOverride: p.thinking,

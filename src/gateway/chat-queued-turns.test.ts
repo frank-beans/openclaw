@@ -1,0 +1,182 @@
+import { describe, expect, it } from "vitest";
+import {
+  abortQueuedChatTurnById,
+  abortQueuedChatTurns,
+  completeQueuedChatTurn,
+  getQueuedChatTurn,
+  listQueuedChatTurnsForSession,
+  markQueuedChatTurnPromoting,
+  registerQueuedChatTurn,
+  type QueuedChatTurnMap,
+} from "./chat-queued-turns.js";
+
+function emptyMap(): QueuedChatTurnMap {
+  return new Map();
+}
+
+describe("chat-queued-turns", () => {
+  it("registers and completes a queued turn", () => {
+    const map = emptyMap();
+    const controller = new AbortController();
+    expect(
+      registerQueuedChatTurn({
+        chatQueuedTurns: map,
+        runId: "run-a",
+        controller,
+        sessionId: "sess-a",
+        sessionKey: "main",
+        ownerConnId: "conn-1",
+        ownerDeviceId: "dev-1",
+        kind: "chat-send",
+      }),
+    ).toBe(true);
+    expect(getQueuedChatTurn(map, "run-a")?.sessionKey).toBe("main");
+    expect(completeQueuedChatTurn(map, "run-a")).toBe(true);
+    expect(getQueuedChatTurn(map, "run-a")).toBeUndefined();
+  });
+
+  it("rejects re-register with a different controller", () => {
+    const map = emptyMap();
+    const first = new AbortController();
+    registerQueuedChatTurn({
+      chatQueuedTurns: map,
+      runId: "run-a",
+      controller: first,
+      sessionId: "sess-a",
+      sessionKey: "main",
+    });
+    expect(
+      registerQueuedChatTurn({
+        chatQueuedTurns: map,
+        runId: "run-a",
+        controller: new AbortController(),
+        sessionId: "sess-a",
+        sessionKey: "main",
+      }),
+    ).toBe(false);
+  });
+
+  it("aborts by runId and removes the entry", () => {
+    const map = emptyMap();
+    const controller = new AbortController();
+    registerQueuedChatTurn({
+      chatQueuedTurns: map,
+      runId: "run-b",
+      controller,
+      sessionId: "sess-b",
+      sessionKey: "main",
+    });
+    const res = abortQueuedChatTurnById(map, {
+      runId: "run-b",
+      sessionKey: "main",
+      stopReason: "rpc",
+    });
+    expect(res.aborted).toBe(true);
+    expect(controller.signal.aborted).toBe(true);
+    expect(map.has("run-b")).toBe(false);
+  });
+
+  it("refuses abort when sessionKey mismatches unless allowed", () => {
+    const map = emptyMap();
+    const controller = new AbortController();
+    registerQueuedChatTurn({
+      chatQueuedTurns: map,
+      runId: "run-c",
+      controller,
+      sessionId: "sess-c",
+      sessionKey: "main",
+    });
+    expect(abortQueuedChatTurnById(map, { runId: "run-c", sessionKey: "other" }).aborted).toBe(
+      false,
+    );
+    expect(controller.signal.aborted).toBe(false);
+    expect(
+      abortQueuedChatTurnById(map, {
+        runId: "run-c",
+        sessionKey: "other",
+        allowSessionMismatch: true,
+      }).aborted,
+    ).toBe(true);
+  });
+
+  it("lists session matches and supports global agent scoping", () => {
+    const map = emptyMap();
+    registerQueuedChatTurn({
+      chatQueuedTurns: map,
+      runId: "g-main",
+      controller: new AbortController(),
+      sessionId: "s1",
+      sessionKey: "global",
+      agentId: "main",
+    });
+    registerQueuedChatTurn({
+      chatQueuedTurns: map,
+      runId: "g-other",
+      controller: new AbortController(),
+      sessionId: "s2",
+      sessionKey: "global",
+      agentId: "other",
+    });
+    registerQueuedChatTurn({
+      chatQueuedTurns: map,
+      runId: "local",
+      controller: new AbortController(),
+      sessionId: "s3",
+      sessionKey: "agent:main:main",
+    });
+    const globalMain = listQueuedChatTurnsForSession({
+      chatQueuedTurns: map,
+      sessionKeys: ["global"],
+      agentId: "main",
+      defaultAgentId: "main",
+    });
+    expect(globalMain.map((m) => m.runId).sort()).toEqual(["g-main"]);
+    const local = listQueuedChatTurnsForSession({
+      chatQueuedTurns: map,
+      sessionKeys: ["agent:main:main"],
+    });
+    expect(local.map((m) => m.runId)).toEqual(["local"]);
+  });
+
+  it("aborts authorized matches before returning runIds", () => {
+    const map = emptyMap();
+    const a = new AbortController();
+    const b = new AbortController();
+    registerQueuedChatTurn({
+      chatQueuedTurns: map,
+      runId: "qa",
+      controller: a,
+      sessionId: "s",
+      sessionKey: "main",
+    });
+    registerQueuedChatTurn({
+      chatQueuedTurns: map,
+      runId: "qb",
+      controller: b,
+      sessionId: "s",
+      sessionKey: "main",
+    });
+    const matches = listQueuedChatTurnsForSession({
+      chatQueuedTurns: map,
+      sessionKeys: ["main"],
+    });
+    const runIds = abortQueuedChatTurns(map, matches, "rpc");
+    expect(runIds.sort()).toEqual(["qa", "qb"]);
+    expect(a.signal.aborted).toBe(true);
+    expect(b.signal.aborted).toBe(true);
+    expect(map.size).toBe(0);
+  });
+
+  it("marks promoting phase", () => {
+    const map = emptyMap();
+    registerQueuedChatTurn({
+      chatQueuedTurns: map,
+      runId: "run-p",
+      controller: new AbortController(),
+      sessionId: "s",
+      sessionKey: "main",
+    });
+    expect(markQueuedChatTurnPromoting(map, "run-p")).toBe(true);
+    expect(getQueuedChatTurn(map, "run-p")?.phase).toBe("promoting");
+  });
+});

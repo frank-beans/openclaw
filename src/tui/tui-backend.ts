@@ -150,10 +150,11 @@ export type TuiBackend = {
   stop: () => void | Promise<void>;
   subscribeSessionEvents?: () => Promise<unknown>;
   sendChat: (opts: ChatSendOptions) => Promise<TuiChatSendResult>;
+  /** runId optional: omit for session-scoped abort (queued turns then active). */
   abortChat: (opts: {
     sessionKey: string;
     agentId?: string;
-    runId: string;
+    runId?: string;
   }) => Promise<{ ok: boolean; aborted: boolean }>;
   loadHistory: (opts: { sessionKey: string; agentId?: string; limit?: number }) => Promise<unknown>;
   listSessions: (opts?: SessionsListParams) => Promise<TuiSessionList>;
