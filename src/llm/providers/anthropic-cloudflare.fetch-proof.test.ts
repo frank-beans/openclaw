@@ -8,6 +8,7 @@
 // Behavior only `buildGuardedModelFetch` can produce.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Context, Model } from "../types.js";
+import { streamAnthropic } from "./anthropic.js";
 
 const CLOUDFLARE_ANTHROPIC_MODEL = {
   id: "claude-sonnet-4-6",
@@ -47,8 +48,11 @@ describe("Anthropic Cloudflare guard-specific SSRF blocking proof", () => {
       baseUrl: "http://169.254.169.254/v1",
     } satisfies Model<"anthropic-messages">;
 
-    const { streamAnthropic } = await import("./anthropic.js");
-    const stream = streamAnthropic(blockedModel, context, { apiKey: "sk-ant-test" });
+    const stream = streamAnthropic(blockedModel, context, {
+      apiKey: "sk-ant-test",
+      // Retries only repeat the same deterministic guard rejection.
+      maxRetries: 0,
+    });
     const result = await stream.result();
 
     expect(result.stopReason).toBe("error");

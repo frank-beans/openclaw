@@ -28,6 +28,24 @@ const { loadBundledPluginPublicArtifactModuleSyncMock } = vi.hoisted(() => ({
           ],
         };
       }
+      if (dirName === "telegram" && artifactBasename === "secret-contract-api.js") {
+        return {
+          secretTargetRegistryEntries: [
+            {
+              id: "channels.telegram.botToken",
+              targetType: "channels.telegram.botToken",
+              configFile: "openclaw.json",
+              pathPattern: "channels.telegram.botToken",
+              refPathPattern: "channels.telegram.botTokenRef",
+              secretShape: "sibling_ref",
+              expectedResolvedValue: "string",
+              includeInPlan: true,
+              includeInConfigure: true,
+              includeInAudit: true,
+            },
+          ],
+        };
+      }
       throw new Error(
         `Unable to resolve bundled plugin public surface ${dirName}/${artifactBasename}`,
       );
@@ -43,7 +61,11 @@ vi.mock("../plugins/public-surface-loader.js", () => ({
   loadBundledPluginPublicArtifactModuleSync: loadBundledPluginPublicArtifactModuleSyncMock,
 }));
 
-import { resolveConfigSecretTargetByPath } from "./target-registry.js";
+import {
+  discoverConfigSecretTargets,
+  resolveConfigSecretTargetByPath,
+  resolvePlanTargetAgainstRegistry,
+} from "./target-registry.js";
 
 describe("secret target registry fast path", () => {
   beforeEach(() => {
@@ -63,6 +85,37 @@ describe("secret target registry fast path", () => {
       dirName: "googlechat",
       artifactBasename: "secret-contract-api.js",
     });
+    expect(loadPluginManifestRegistryMock).not.toHaveBeenCalled();
+  });
+
+  it("discovers core config targets without loading plugin metadata", () => {
+    const targets = discoverConfigSecretTargets({
+      gateway: { auth: { token: "test-token" } },
+    });
+
+    expect(targets.map((target) => target.entry.id)).toEqual([
+      "gateway.auth.token",
+      "gateway.auth.password",
+    ]);
+    expect(loadPluginManifestRegistryMock).not.toHaveBeenCalled();
+  });
+
+  it("discovers configured channel targets without loading plugin metadata", () => {
+    const targets = discoverConfigSecretTargets({
+      channels: { telegram: { botToken: "test-token" } },
+    });
+
+    expect(targets.map((target) => target.entry.id)).toContain("channels.telegram.botToken");
+    expect(loadPluginManifestRegistryMock).not.toHaveBeenCalled();
+  });
+
+  it("resolves channel plan targets without loading plugin metadata", () => {
+    const target = resolvePlanTargetAgainstRegistry({
+      type: "channels.telegram.botToken",
+      pathSegments: ["channels", "telegram", "botToken"],
+    });
+
+    expect(target?.entry.id).toBe("channels.telegram.botToken");
     expect(loadPluginManifestRegistryMock).not.toHaveBeenCalled();
   });
 });

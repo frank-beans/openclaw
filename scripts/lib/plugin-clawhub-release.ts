@@ -124,6 +124,10 @@ type ClawHubRequestOptions = {
   requestTimeoutMs?: number;
 };
 
+type ClawHubRetryOptions = ClawHubRequestOptions & {
+  sleep?: (ms: number) => Promise<void>;
+};
+
 async function fetchClawHubRequest(
   url: URL,
   options: ClawHubRequestOptions = {},
@@ -474,10 +478,8 @@ async function doesClawHubPackageExist(
 
 async function hasClawHubTrustedPublisher(
   packageName: string,
-  options: {
-    fetchImpl?: typeof fetch;
+  options: ClawHubRetryOptions & {
     registryBaseUrl?: string;
-    requestTimeoutMs?: number;
   } = {},
 ): Promise<boolean> {
   const url = new URL(
@@ -526,7 +528,7 @@ async function hasClawHubTrustedPublisher(
     }
 
     await response.body?.cancel().catch(() => undefined);
-    await delay(clawHubRetryDelayMs(response, attempt));
+    await (options.sleep ?? delay)(clawHubRetryDelayMs(response, attempt));
   }
 }
 
@@ -588,6 +590,7 @@ export async function collectPluginClawHubReleasePlan(params?: {
   registryBaseUrl?: string;
   fetchImpl?: typeof fetch;
   requestTimeoutMs?: number;
+  sleep?: (ms: number) => Promise<void>;
 }): Promise<PluginReleasePlan> {
   const rootDir = params?.rootDir;
   const selection = params?.selection ?? [];
@@ -631,6 +634,7 @@ export async function collectPluginClawHubReleasePlan(params?: {
           registryBaseUrl: params?.registryBaseUrl,
           fetchImpl: params?.fetchImpl,
           requestTimeoutMs: params?.requestTimeoutMs,
+          sleep: params?.sleep,
         })
       : false;
     const alreadyPublished = packageExists

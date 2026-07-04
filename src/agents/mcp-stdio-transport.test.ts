@@ -121,6 +121,27 @@ describe("OpenClawStdioClientTransport", () => {
     await closing;
   });
 
+  it("force-closes an in-flight graceful shutdown before returning", async () => {
+    vi.useFakeTimers();
+    const child = new MockChildProcess();
+    spawnMock.mockReturnValue(child);
+
+    const transport = new OpenClawStdioClientTransport({ command: "npx" });
+    const started = transport.start();
+    child.emit("spawn");
+    await started;
+
+    const closing = transport.close();
+    const forced = transport.forceClose();
+    expect(signalProcessTreeMock).toHaveBeenCalledWith(4321, "SIGKILL");
+
+    child.exitCode = 0;
+    child.emit("close", 0);
+    await expect(forced).resolves.toBeUndefined();
+    await expect(closing).resolves.toBeUndefined();
+    expect(transport.pid).toBeNull();
+  });
+
   it("does not kill the process tree when graceful stdio close exits", async () => {
     vi.useFakeTimers();
     const child = new MockChildProcess();

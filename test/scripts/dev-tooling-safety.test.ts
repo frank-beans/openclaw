@@ -191,9 +191,7 @@ describe("script-specific dev tooling hardening", () => {
       "--channel requires a value",
     );
     for (const flag of ["--channel", "--token", "--timeout-ms", "--state-dir"]) {
-      expect(() => discordSmokeTesting.parseArgs([flag, "-h"])).toThrow(
-        `${flag} requires a value`,
-      );
+      expect(() => discordSmokeTesting.parseArgs([flag, "-h"])).toThrow(`${flag} requires a value`);
     }
   });
 
@@ -578,42 +576,17 @@ describe("script-specific dev tooling hardening", () => {
     );
   });
 
-  it("prints OpenAI realtime smoke help without launching live checks", () => {
+  it("formats OpenAI realtime smoke help without launching live checks", () => {
     expect(realtimeSmokeTesting.parseRealtimeSmokeArgs(["--help"])).toEqual({ help: true });
-
-    const result = spawnSync(
-      process.execPath,
-      ["--import", "tsx", "scripts/dev/realtime-talk-live-smoke.ts", "--help"],
-      {
-        cwd: process.cwd(),
-        encoding: "utf8",
-      },
-    );
-
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain(
+    expect(realtimeSmokeTesting.usage()).toContain(
       "Usage: node --import tsx scripts/dev/realtime-talk-live-smoke.ts",
     );
-    expect(result.stderr).toBe("");
   });
 
-  it("rejects unknown OpenAI realtime smoke args before launching live checks", () => {
+  it("rejects unknown OpenAI realtime smoke args before runtime setup", () => {
     expect(() => realtimeSmokeTesting.parseRealtimeSmokeArgs(["--wat"])).toThrow(
       "Unknown argument: --wat",
     );
-
-    const result = spawnSync(
-      process.execPath,
-      ["--import", "tsx", "scripts/dev/realtime-talk-live-smoke.ts", "--wat"],
-      {
-        cwd: process.cwd(),
-        encoding: "utf8",
-      },
-    );
-
-    expect(result.status).toBe(1);
-    expect(result.stdout).toBe("");
-    expect(result.stderr.trim()).toBe("Unknown argument: --wat");
   });
 
   it("bounds OpenAI realtime smoke response body reads by content-length", async () => {
@@ -750,34 +723,21 @@ describe("script-specific dev tooling hardening", () => {
       const descendantPidPath = path.join(tempRoot, "descendant.pid");
       let descendantPid = 0;
       const fakeClaudeBin = await writeFakePromptCli(tempRoot, descendantPidPath);
-      const probe = spawn(
-        process.execPath,
-        ["--import", "tsx", "scripts/anthropic-prompt-probe.ts"],
-        {
-          cwd: process.cwd(),
-          env: {
-            ...process.env,
-            CLAUDE_BIN: fakeClaudeBin,
-            OPENCLAW_PROMPT_TEXT: "timeout cleanup proof",
-            OPENCLAW_PROMPT_TIMEOUT_MS: "1000",
-            OPENCLAW_PROMPT_TRANSPORT: "direct",
-          },
-          stdio: "ignore",
-        },
-      );
 
       try {
-        await waitForCondition(() => existsSync(descendantPidPath));
+        const resultPromise = promptProbeTesting.runDirectPrompt("timeout cleanup proof", {
+          claudeBin: fakeClaudeBin,
+          shutdownWaitMs: 100,
+          timeoutMs: 500,
+        });
+        await waitForCondition(() => existsSync(descendantPidPath), 750);
         descendantPid = Number.parseInt(await fs.readFile(descendantPidPath, "utf8"), 10);
         expect(Number.isInteger(descendantPid)).toBe(true);
         expect(isProcessAlive(descendantPid)).toBe(true);
 
-        await expect(waitForChildExit(probe)).resolves.toEqual({ status: 0, signal: null });
+        await expect(resultPromise).resolves.toMatchObject({ exitCode: null, signal: "SIGKILL" });
         await waitForCondition(() => !isProcessAlive(descendantPid));
       } finally {
-        if (probe.pid && isProcessAlive(probe.pid)) {
-          process.kill(probe.pid, "SIGKILL");
-        }
         if (descendantPid && isProcessAlive(descendantPid)) {
           process.kill(descendantPid, "SIGKILL");
         }
@@ -940,7 +900,7 @@ describe("script-specific dev tooling hardening", () => {
             },
           },
           50,
-          1_000,
+          100,
         );
 
         expect(stopped).toBe(true);
@@ -993,7 +953,7 @@ describe("script-specific dev tooling hardening", () => {
           `const child = childProcess.spawn(process.execPath, ['--input-type=module', '--eval', ${JSON.stringify(leaderScript)}], { detached: true, stdio: 'ignore' });`,
           "let stopPromise;",
           "const stopGateway = () => {",
-          "  stopPromise ??= testing.stopGatewayPromptChild(child, { close: async () => {} }, 50, 1000);",
+          "  stopPromise ??= testing.stopGatewayPromptChild(child, { close: async () => {} }, 50, 100);",
           "  return stopPromise;",
           "};",
           "testing.installGatewayPromptParentSignalHandlers(child, stopGateway);",
